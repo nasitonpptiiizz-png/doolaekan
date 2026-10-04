@@ -48,7 +48,7 @@ button.primary:disabled{opacity:.5}
     <button id="t-today" data-tab="today">วันนี้</button>
     <button id="t-bp" data-tab="bp">ความดัน 7 วัน</button>
     <button id="t-form" data-tab="form" hidden>บันทึกความดัน</button>
-    <button id="t-rep" data-tab="rep">รายงาน</button>
+    <button id="t-rep" data-tab="rep" hidden>รายงาน</button>
     <button id="t-work" data-tab="work" hidden>งานของฉัน</button>
   </div>
 </header>
@@ -144,9 +144,9 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab
     token = liff.getIDToken();
     data = await call({});
     $("who").textContent = `${data.patient} · ไม่ใช่ช่องทางฉุกเฉิน เหตุฉุกเฉินโทร 1669`;
-    $("tabs").hidden = false; $("t-form").hidden = $("t-work").hidden = data.role !== "caregiver";
+    $("tabs").hidden = false; $("t-form").hidden = $("t-work").hidden = data.role !== "caregiver"; $("t-rep").hidden = data.role !== "family";
     if (location.hash === "#bp" && data.role === "caregiver") tab = "form";
-    if (location.hash === "#rep") tab = "rep";
+    if (location.hash === "#rep" && data.role === "family") tab = "rep";
     render();
   } catch (err) { $("who").textContent = ""; $("main").innerHTML = `<div class="card">${esc(err.message || "เปิดหน้านี้ไม่สำเร็จ")}</div>`; }
 })();
