@@ -12,7 +12,7 @@ header{background:var(--surface);padding:12px 16px 0;border-bottom:1px solid var
 h1{font-size:19px;margin:0}
 .sub{font-size:13px;color:var(--muted)}
 .tabs{display:flex;gap:4px;margin-top:8px}
-.tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:10px 4px;font:inherit;font-weight:500;color:var(--muted)}
+.tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:10px 2px;font:inherit;font-size:14px;font-weight:500;color:var(--muted)}
 .tabs button[aria-selected=true]{color:var(--accent);border-color:var(--accent);font-weight:700}
 main{padding:16px;display:flex;flex-direction:column;gap:12px;max-width:520px;margin:0 auto}
 .card{background:var(--surface);border-radius:14px;padding:14px}
@@ -44,6 +44,7 @@ button.primary:disabled{opacity:.5}
     <button id="t-today" data-tab="today">วันนี้</button>
     <button id="t-bp" data-tab="bp">ความดัน 7 วัน</button>
     <button id="t-form" data-tab="form" hidden>บันทึกความดัน</button>
+    <button id="t-work" data-tab="work" hidden>งานของฉัน</button>
   </div>
 </header>
 <main id="main"><div class="card">กำลังโหลดข้อมูล…</div></main>
@@ -71,7 +72,7 @@ function chart(days) {
   <div class="note">จุดทึบ = ตัวบน · จุดโปร่ง เส้นประ = ตัวล่าง (mmHg) · ใช้ค่าแรกของแต่ละวัน · วันที่ไม่มีบันทึกเว้นว่าง</div>`;
 }
 function render() {
-  ["today", "bp", "form"].forEach(k => $("t-" + k).setAttribute("aria-selected", k === tab));
+  ["today", "bp", "form", "work"].forEach(k => $("t-" + k).setAttribute("aria-selected", k === tab));
   const m = $("main");
   if (tab === "today") {
     m.innerHTML = `<div class="card"><h2>งานวันนี้</h2>${data.plans.map(p => `<div class="row"><span>${esc(p.time)} ${esc(p.label)}</span>${pill(p.status)}</div>`).join("") || "ยังไม่มีรายการในแผน"}
@@ -83,6 +84,16 @@ function render() {
     m.innerHTML = `<div class="card"><h2>ความดัน 7 วัน</h2>${chart(days)}</div>
       <div class="card"><h2>ทุกค่าที่บันทึก</h2>${data.bp.length ? `<table><tr><th>วันที่</th><th>เวลา</th><th>ตัวบน/ตัวล่าง</th><th>ชีพจร</th></tr>${data.bp.slice().reverse().map(b => `<tr><td>${Number(b.date.slice(8))}/${Number(b.date.slice(5, 7))}</td><td>${esc(b.time)}</td><td>${b.s}/${b.d}</td><td>${b.p ?? "ไม่มีข้อมูล"}</td></tr>`).join("")}</table>` : "ยังไม่มีข้อมูลใน 7 วันนี้"}
       <div class="note">แสดงตามที่ผู้ดูแลบันทึก ระบบไม่ตีความค่าและไม่วินิจฉัย โปรดปรึกษาแพทย์</div></div>`;
+  } else if (tab === "work") {
+    const w = data.work, dm = s => Number(s.slice(8)) + "/" + Number(s.slice(5, 7)) + "/" + (Number(s.slice(0, 4)) + 543);
+    m.innerHTML = `<div class="card"><h2>สมุดประวัติการทำงาน</h2><table>
+      <tr><th>ดูแลมาแล้ว</th><td>${w.homes.length} บ้าน</td></tr>
+      <tr><th>วันที่มีการบันทึก</th><td>${w.days} วัน (รวม ${w.entries} รายการ)</td></tr>
+      <tr><th>บันทึกต่อเนื่อง</th><td>${w.streak} วัน</td></tr></table>
+      <div class="note">นับจากวันที่มีการบันทึก การบันทึกว่า "ไม่ได้ให้ยา" พร้อมเหตุผล นับเท่ากับ "ให้แล้ว" ไม่มีดาวหรือคะแนน</div></div>
+      <div class="card"><h2>บ้านที่ดูแล</h2>${w.homes.slice().reverse().map(x => `<div class="row"><span>บ้านที่ ${x.n} · เริ่ม ${dm(x.from)}</span><span class="pill ${x.to ? "" : "done"}">${x.to ? "ถึง " + dm(x.to) : "ปัจจุบัน"}</span></div>`).join("")}
+      <div class="note">ไม่แสดงชื่อหรือข้อมูลสุขภาพของผู้สูงอายุ</div></div>
+      <div class="card"><h2>การแชร์</h2>ตอนนี้มีแค่คุณที่เห็นหน้านี้ การแชร์ให้นายจ้างดูยังไม่เปิดใช้</div>`;
   } else {
     m.innerHTML = `<div class="card"><h2>บันทึกความดัน-ชีพจร</h2><form id="f">
       <div class="fields"><label>ตัวบน (mmHg)<input id="s" inputmode="numeric" required></label><label>ตัวล่าง (mmHg)<input id="d" inputmode="numeric" required></label><label>ชีพจร (ครั้ง/นาที)<input id="p" inputmode="numeric"></label></div>
@@ -103,7 +114,7 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab
     token = liff.getIDToken();
     data = await call({});
     $("who").textContent = `${data.patient} · ไม่ใช่ช่องทางฉุกเฉิน เหตุฉุกเฉินโทร 1669`;
-    $("tabs").hidden = false; $("t-form").hidden = data.role !== "caregiver";
+    $("tabs").hidden = false; $("t-form").hidden = $("t-work").hidden = data.role !== "caregiver";
     if (location.hash === "#bp" && data.role === "caregiver") tab = "form";
     render();
   } catch (err) { $("who").textContent = ""; $("main").innerHTML = `<div class="card">${esc(err.message || "เปิดหน้านี้ไม่สำเร็จ")}</div>`; }
