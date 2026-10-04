@@ -34,6 +34,10 @@ button.primary{font:inherit;font-weight:700;min-height:52px;border-radius:12px;b
 button.primary:disabled{opacity:.5}
 .msg{font-weight:700}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.pick{flex:none;display:flex;flex-direction:row;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:16px;color:var(--ink)}
+.pick span{flex:1}
+.pick input[type=checkbox]{width:26px;height:26px;padding:0;flex:0 0 auto;accent-color:var(--accent)}
+.pick input[type=time]{width:auto;flex:0 0 118px;font-size:17px;padding:6px 8px}
 .seg{display:flex;gap:8px}
 .seg button{flex:1;font:inherit;font-weight:600;min-height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink)}
 .seg button[aria-pressed=true]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -49,6 +53,7 @@ button.primary:disabled{opacity:.5}
     <button id="t-bp" data-tab="bp">ความดัน 7 วัน</button>
     <button id="t-form" data-tab="form" hidden>บันทึกความดัน</button>
     <button id="t-rep" data-tab="rep" hidden>รายงาน</button>
+    <button id="t-plan" data-tab="plan" hidden>ตั้งตาราง</button>
     <button id="t-work" data-tab="work" hidden>งานของฉัน</button>
   </div>
 </header>
@@ -59,8 +64,14 @@ const LIFF_ID = "2011856498-srnlU1mj";
 const API = "https://iefhpnprkchrekkxogni.supabase.co/functions/v1/line-webhook";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let data = null, tab = "today", token = "", rep = null, repDays = 7;
-const ERR = { unauthorized: "ยืนยันตัวตนไม่สำเร็จ กรุณาปิดแล้วเปิดหน้านี้ใหม่จากแชทดูแลกัน", not_member: "บัญชี LINE นี้ยังไม่ได้เข้าบ้าน กรุณาพิมพ์รหัสเชิญในแชทดูแลกันก่อน", not_configured: "ระบบยังตั้งค่าไม่เสร็จ", invalid: "ตัวเลขดูไม่ถูกต้อง กรุณาตรวจอีกครั้ง", future: "เวลาที่วัดต้องไม่เกินเวลาปัจจุบัน", forbidden: "เฉพาะผู้ดูแลเท่านั้นที่บันทึกได้" };
+let data = null, tab = "today", token = "", rep = null, repDays = 7, turnInt = 0;
+const MEDS = [["ยาก่อนอาหารเช้า", "07:30"], ["ยาหลังอาหารเช้า", "08:00"], ["ยาก่อนอาหารกลางวัน", "11:30"], ["ยาหลังอาหารกลางวัน", "12:30"], ["ยาก่อนอาหารเย็น", "17:30"], ["ยาหลังอาหารเย็น", "18:30"], ["ยาก่อนนอน", "20:30"]];
+const BPS = [["วัดความดัน-ชีพจร เช้า", "09:00"], ["วัดความดัน-ชีพจร เย็น", "17:00"]];
+const TURN = "พลิกตะแคงตัว";
+const mins = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+const hm = n => String(Math.floor(n / 60) % 24).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
+function turnTimes(from, to, h) { const a = mins(from); let b = mins(to); if (b <= a) b += 1440; const out = []; for (let t = a; t <= b && out.length < 24 / h; t += h * 60) out.push(hm(t)); return out; }
+const ERR = { unauthorized: "ยืนยันตัวตนไม่สำเร็จ กรุณาปิดแล้วเปิดหน้านี้ใหม่จากแชทดูแลกัน", not_member: "บัญชี LINE นี้ยังไม่ได้เข้าบ้าน กรุณาพิมพ์รหัสเชิญในแชทดูแลกันก่อน", not_configured: "ระบบยังตั้งค่าไม่เสร็จ", invalid: "ข้อมูลที่กรอกไม่ถูกต้อง กรุณาตรวจอีกครั้ง", future: "เวลาที่วัดต้องไม่เกินเวลาปัจจุบัน", forbidden: "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้" };
 async function call(body) {
   const r = await fetch(API, { method: "POST", headers: { "content-type": "application/json", "x-liff-token": token }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({ error: "bad" }));
@@ -78,7 +89,7 @@ function chart(days) {
   <div class="note">จุดทึบ = ตัวบน · จุดโปร่ง เส้นประ = ตัวล่าง (mmHg) · ใช้ค่าแรกของแต่ละวัน · วันที่ไม่มีบันทึกเว้นว่าง</div>`;
 }
 function render() {
-  ["today", "bp", "form", "work", "rep"].forEach(k => $("t-" + k).setAttribute("aria-selected", k === tab));
+  ["today", "bp", "form", "work", "rep", "plan"].forEach(k => $("t-" + k).setAttribute("aria-selected", k === tab));
   const m = $("main");
   if (tab === "today") {
     m.innerHTML = `<div class="card"><h2>งานวันนี้</h2>${data.plans.map(p => `<div class="row"><span>${esc(p.time)} ${esc(p.label)}</span>${pill(p.status)}</div>`).join("") || "ยังไม่มีรายการในแผน"}
@@ -90,6 +101,37 @@ function render() {
     m.innerHTML = `<div class="card"><h2>ความดัน 7 วัน</h2>${chart(days)}</div>
       <div class="card"><h2>ทุกค่าที่บันทึก</h2>${data.bp.length ? `<table><tr><th>วันที่</th><th>เวลา</th><th>ตัวบน/ตัวล่าง</th><th>ชีพจร</th></tr>${data.bp.slice().reverse().map(b => `<tr><td>${Number(b.date.slice(8))}/${Number(b.date.slice(5, 7))}</td><td>${esc(b.time)}</td><td>${b.s}/${b.d}</td><td>${b.p ?? "ไม่มีข้อมูล"}</td></tr>`).join("")}</table>` : "ยังไม่มีข้อมูลใน 7 วันนี้"}
       <div class="note">แสดงตามที่ผู้ดูแลบันทึก ระบบไม่ตีความค่าและไม่วินิจฉัย โปรดปรึกษาแพทย์</div></div>`;
+  } else if (tab === "plan") {
+    const cur = data.plan || [], known = new Set([...MEDS, ...BPS].map(x => x[0]).concat(TURN));
+    const row = (k, [l, t]) => { const c = cur.find(p => p.label === l); return `<label class="pick"><input type="checkbox" data-k="${k}" data-l="${esc(l)}" ${c ? "checked" : ""}><span>${esc(l)}</span><input type="time" value="${c ? c.time : t}"></label>`; };
+    const tn = cur.filter(p => p.type === "care" && p.label === TURN).sort((a, b) => a.time.localeCompare(b.time));
+    if (!turnInt) turnInt = tn.length > 1 ? Math.max(2, Math.min(6, Math.round((mins(tn[1].time) - mins(tn[0].time)) / 60))) : 2;
+    const others = cur.filter(p => !known.has(p.label));
+    m.innerHTML = `<div class="card"><h2>ยา</h2>${MEDS.map(x => row("med", x)).join("")}<div class="note">ติ๊กรอบที่มียา แล้วแก้เวลาให้ตรงกับที่บ้าน ระบบไม่เก็บชื่อยาหรือขนาดยา</div></div>
+      <div class="card"><h2>วัดความดัน-ชีพจร</h2>${BPS.map(x => row("bp", x)).join("")}</div>
+      <div class="card"><h2>พลิกตะแคงตัว</h2>
+        <label class="pick"><input type="checkbox" id="tn-on" ${tn.length ? "checked" : ""}><span>มีการพลิกตะแคงตัว</span></label>
+        <div class="seg" id="tn-int">${[2, 4, 6].map(h => `<button type="button" data-int="${h}" aria-pressed="${h === turnInt}">ทุก ${h} ชม.</button>`).join("")}</div>
+        <label class="pick"><span>เริ่มรอบแรก</span><input type="time" id="tn-from" value="${tn.length ? tn[0].time : "06:00"}"></label>
+        <label class="pick"><span>รอบสุดท้ายไม่เกิน</span><input type="time" id="tn-to" value="${tn.length ? tn[tn.length - 1].time : "22:00"}"></label>
+        <label class="pick"><input type="checkbox" id="tn-rm" ${!tn.length || tn[0].remind ? "checked" : ""}><span>เตือนผู้ดูแลเมื่อถึงเวลา</span></label>
+        <div class="note" id="tn-pv"></div></div>
+      ${others.length ? `<div class="card"><h2>รายการอื่นที่ตั้งไว้</h2>${others.map((p, i) => `<label class="pick"><input type="checkbox" data-o="${i}" checked><span>${esc(p.time)} ${esc(p.label)}</span></label>`).join("")}<div class="note">เอาติ๊กออกเพื่อลบ</div></div>` : ""}
+      <div class="msg" id="pmsg"></div><button class="primary" id="psave">บันทึกตารางงาน</button>
+      <div class="note">ลบรายการแล้วประวัติที่เคยบันทึกยังอยู่ การเตือนแต่ละครั้งนับโควต้าข้อความของระบบ</div>`;
+    const pv = () => { const t = turnTimes($("tn-from").value || "06:00", $("tn-to").value || "22:00", turnInt); $("tn-pv").textContent = $("tn-on").checked ? `วันละ ${t.length} รอบ: ${t.join(" ")}` : "ไม่ได้เลือก"; return t; };
+    pv(); ["tn-on", "tn-from", "tn-to"].forEach(id => $(id).addEventListener("change", pv));
+    $("tn-int").addEventListener("click", e => { const b = e.target.closest("[data-int]"); if (!b) return; turnInt = Number(b.dataset.int); [...$("tn-int").children].forEach(x => x.setAttribute("aria-pressed", x === b)); pv(); });
+    $("psave").addEventListener("click", async () => {
+      const plans = [];
+      m.querySelectorAll("input[data-k]").forEach(c => { if (c.checked) plans.push({ type: c.dataset.k, label: c.dataset.l, time: c.closest("label").querySelector("input[type=time]").value, remind: true }); });
+      if ($("tn-on").checked) pv().forEach(t => plans.push({ type: "care", label: TURN, time: t, remind: $("tn-rm").checked }));
+      m.querySelectorAll("input[data-o]").forEach(c => { if (c.checked) plans.push(others[Number(c.dataset.o)]); });
+      if (plans.some(p => !/^\d{2}:\d{2}$/.test(p.time))) { $("pmsg").textContent = "กรุณาใส่เวลาให้ครบทุกรายการที่ติ๊ก"; return; }
+      $("psave").disabled = true; $("pmsg").textContent = "กำลังบันทึก…";
+      try { await call({ action: "plans_set", plans }); data = await call({}); turnInt = 0; render(); $("pmsg").textContent = `บันทึกแล้ว ตารางงานมี ${data.plan.length} รายการ`; }
+      catch (err) { $("pmsg").textContent = "ยังไม่ได้บันทึก: " + err.message; $("psave").disabled = false; }
+    });
   } else if (tab === "rep") {
     const dm = s => Number(s.slice(8)) + "/" + Number(s.slice(5, 7));
     const seg = `<div class="seg noprint">${[7, 30, 90].map(d => `<button data-days="${d}" aria-pressed="${d === repDays}">${d} วัน</button>`).join("")}</div>`;
@@ -144,9 +186,10 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab
     token = liff.getIDToken();
     data = await call({});
     $("who").textContent = `${data.patient} · ไม่ใช่ช่องทางฉุกเฉิน เหตุฉุกเฉินโทร 1669`;
-    $("tabs").hidden = false; $("t-form").hidden = $("t-work").hidden = data.role !== "caregiver"; $("t-rep").hidden = data.role !== "family";
+    $("tabs").hidden = false; $("t-form").hidden = $("t-work").hidden = data.role !== "caregiver"; $("t-rep").hidden = data.role !== "family"; $("t-plan").hidden = !data.owner;
     if (location.hash === "#bp" && data.role === "caregiver") tab = "form";
     if (location.hash === "#rep" && data.role === "family") tab = "rep";
+    if (location.hash === "#plan" && data.owner) tab = "plan";
     render();
   } catch (err) { $("who").textContent = ""; $("main").innerHTML = `<div class="card">${esc(err.message || "เปิดหน้านี้ไม่สำเร็จ")}</div>`; }
 })();
