@@ -11,8 +11,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Leelawadee UI
 header{background:var(--surface);padding:12px 16px 0;border-bottom:1px solid var(--line);position:sticky;top:0}
 h1{font-size:19px;margin:0}
 .sub{font-size:13px;color:var(--muted)}
-.tabs{display:flex;gap:4px;margin-top:8px}
-.tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:10px 2px;font:inherit;font-size:14px;font-weight:500;color:var(--muted)}
+.tabs{display:flex;gap:4px;margin-top:8px;overflow-x:auto}
+.tabs button{flex:1 0 auto;white-space:nowrap;background:none;border:0;border-bottom:3px solid transparent;padding:10px 10px;font:inherit;font-size:14px;font-weight:500;color:var(--muted)}
 .tabs button[aria-selected=true]{color:var(--accent);border-color:var(--accent);font-weight:700}
 main{padding:16px;display:flex;flex-direction:column;gap:12px;max-width:520px;margin:0 auto}
 .card{background:var(--surface);border-radius:14px;padding:14px}
@@ -34,6 +34,10 @@ button.primary{font:inherit;font-weight:700;min-height:52px;border-radius:12px;b
 button.primary:disabled{opacity:.5}
 .msg{font-weight:700}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;font:inherit;font-weight:600;min-height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink)}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+@media print{header .tabs,.noprint{display:none!important}body{background:#fff}header{position:static}.card{border:1px solid var(--line);break-inside:avoid}}
 </style>
 </head>
 <body>
@@ -44,6 +48,7 @@ button.primary:disabled{opacity:.5}
     <button id="t-today" data-tab="today">วันนี้</button>
     <button id="t-bp" data-tab="bp">ความดัน 7 วัน</button>
     <button id="t-form" data-tab="form" hidden>บันทึกความดัน</button>
+    <button id="t-rep" data-tab="rep">รายงาน</button>
     <button id="t-work" data-tab="work" hidden>งานของฉัน</button>
   </div>
 </header>
@@ -54,7 +59,7 @@ const LIFF_ID = "2011856498-srnlU1mj";
 const API = "https://iefhpnprkchrekkxogni.supabase.co/functions/v1/line-webhook";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let data = null, tab = "today", token = "";
+let data = null, tab = "today", token = "", rep = null, repDays = 7;
 const ERR = { unauthorized: "ยืนยันตัวตนไม่สำเร็จ กรุณาปิดแล้วเปิดหน้านี้ใหม่จากแชทดูแลกัน", not_member: "บัญชี LINE นี้ยังไม่ได้เข้าบ้าน กรุณาพิมพ์รหัสเชิญในแชทดูแลกันก่อน", not_configured: "ระบบยังตั้งค่าไม่เสร็จ", invalid: "ตัวเลขดูไม่ถูกต้อง กรุณาตรวจอีกครั้ง", future: "เวลาที่วัดต้องไม่เกินเวลาปัจจุบัน", forbidden: "เฉพาะผู้ดูแลเท่านั้นที่บันทึกได้" };
 async function call(body) {
   const r = await fetch(API, { method: "POST", headers: { "content-type": "application/json", "x-liff-token": token }, body: JSON.stringify(body) });
@@ -64,15 +69,16 @@ async function call(body) {
 }
 const pill = s => `<span class="pill ${s === "บันทึกแล้ว" ? "done" : s === "ยังไม่มีบันทึก" ? "wait" : ""}">${esc(s)}</span>`;
 function chart(days) {
-  const X = i => 36 + i * 44, Y = v => 10 + (200 - v) / 160 * 120;
+  const n = days.length, step = Math.ceil(n / 7), r = n > 30 ? 2 : 3.5;
+  const X = i => 36 + (n > 1 ? i * 264 / (n - 1) : 132), Y = v => 10 + (200 - v) / 160 * 120;
   const path = k => { let d = "", pen = false; days.forEach((x, i) => { if (!x.v) { pen = false; return } d += (pen ? "L" : "M") + X(i) + " " + Y(x.v[k]) + " "; pen = true }); return d };
   let g = ""; for (let v = 40; v <= 200; v += 40) g += `<line x1="32" x2="308" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="28" y="${Y(v) + 3}" text-anchor="end">${v}</text>`;
-  const dots = k => days.map((x, i) => x.v ? `<circle cx="${X(i)}" cy="${Y(x.v[k])}" r="3.5" fill="${k === "s" ? "var(--accent)" : "var(--surface)"}" stroke="var(--accent)" stroke-width="2"/>` : "").join("");
-  return `<svg viewBox="0 0 320 154" width="100%" role="img" aria-label="กราฟความดัน 7 วัน">${g}<path d="${path("s")}" fill="none" stroke="var(--accent)" stroke-width="2"/><path d="${path("d")}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3"/>${dots("s")}${dots("d")}${days.map((x, i) => `<text x="${X(i)}" y="148" text-anchor="middle">${x.lab}</text>`).join("")}</svg>
+  const dots = k => days.map((x, i) => x.v ? `<circle cx="${X(i)}" cy="${Y(x.v[k])}" r="${r}" fill="${k === "s" ? "var(--accent)" : "var(--surface)"}" stroke="var(--accent)" stroke-width="2"/>` : "").join("");
+  return `<svg viewBox="0 0 320 154" width="100%" role="img" aria-label="กราฟความดัน ${n} วัน">${g}<path d="${path("s")}" fill="none" stroke="var(--accent)" stroke-width="2"/><path d="${path("d")}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3"/>${dots("s")}${dots("d")}${days.map((x, i) => (n - 1 - i) % step ? "" : `<text x="${X(i)}" y="148" text-anchor="middle">${x.lab}</text>`).join("")}</svg>
   <div class="note">จุดทึบ = ตัวบน · จุดโปร่ง เส้นประ = ตัวล่าง (mmHg) · ใช้ค่าแรกของแต่ละวัน · วันที่ไม่มีบันทึกเว้นว่าง</div>`;
 }
 function render() {
-  ["today", "bp", "form", "work"].forEach(k => $("t-" + k).setAttribute("aria-selected", k === tab));
+  ["today", "bp", "form", "work", "rep"].forEach(k => $("t-" + k).setAttribute("aria-selected", k === tab));
   const m = $("main");
   if (tab === "today") {
     m.innerHTML = `<div class="card"><h2>งานวันนี้</h2>${data.plans.map(p => `<div class="row"><span>${esc(p.time)} ${esc(p.label)}</span>${pill(p.status)}</div>`).join("") || "ยังไม่มีรายการในแผน"}
@@ -84,6 +90,28 @@ function render() {
     m.innerHTML = `<div class="card"><h2>ความดัน 7 วัน</h2>${chart(days)}</div>
       <div class="card"><h2>ทุกค่าที่บันทึก</h2>${data.bp.length ? `<table><tr><th>วันที่</th><th>เวลา</th><th>ตัวบน/ตัวล่าง</th><th>ชีพจร</th></tr>${data.bp.slice().reverse().map(b => `<tr><td>${Number(b.date.slice(8))}/${Number(b.date.slice(5, 7))}</td><td>${esc(b.time)}</td><td>${b.s}/${b.d}</td><td>${b.p ?? "ไม่มีข้อมูล"}</td></tr>`).join("")}</table>` : "ยังไม่มีข้อมูลใน 7 วันนี้"}
       <div class="note">แสดงตามที่ผู้ดูแลบันทึก ระบบไม่ตีความค่าและไม่วินิจฉัย โปรดปรึกษาแพทย์</div></div>`;
+  } else if (tab === "rep") {
+    const dm = s => Number(s.slice(8)) + "/" + Number(s.slice(5, 7));
+    const seg = `<div class="seg noprint">${[7, 30, 90].map(d => `<button data-days="${d}" aria-pressed="${d === repDays}">${d} วัน</button>`).join("")}</div>`;
+    if (!rep || rep.days !== repDays) { m.innerHTML = seg + `<div class="card">กำลังโหลดรายงาน…</div>`; loadRep(); return; }
+    const days = [];
+    for (let i = rep.days - 1; i >= 0; i--) { const d = new Date(rep.to + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - i); const iso = d.toISOString().slice(0, 10); days.push({ lab: d.getUTCDate() + "/" + (d.getUTCMonth() + 1), v: rep.bp.find(b => b.date === iso) || null }); }
+    const S = rep.bp.map(b => b.s), D = rep.bp.map(b => b.d), none = rep.med.expected - rep.med.done - rep.med.skipped;
+    const tbl = (head, rows) => rows.length ? `<table><tr>${head.map(x => `<th>${x}</th>`).join("")}</tr>${rows.map(r => `<tr>${r.map(x => `<td>${esc(x ?? "ไม่มีข้อมูล")}</td>`).join("")}</tr>`).join("")}</table>` : "ไม่มีรายการในช่วงนี้";
+    m.innerHTML = seg + `<div class="card"><h2>รายงานการดูแล ${esc(rep.patient)}</h2><table>
+      <tr><th>ช่วงวันที่</th><td>${dm(rep.from)} ถึง ${dm(rep.to)} (${rep.days} วัน)</td></tr>
+      <tr><th>วันที่มีการบันทึก</th><td>${rep.daysWithLogs} จาก ${rep.days} วัน</td></tr>
+      <tr><th>ยา (ตามรอบที่ตั้งไว้ ${rep.med.expected} รอบ)</th><td>บันทึกว่าให้แล้ว ${rep.med.done} รอบ<br>บันทึกว่าไม่ได้ให้ ${rep.med.skipped} รอบ<br>ไม่มีบันทึก ${none < 0 ? 0 : none} รอบ</td></tr>
+      <tr><th>ความดัน</th><td>${rep.bp.length ? `บันทึก ${rep.bp.length} ครั้ง<br>ตัวบน ${Math.min(...S)} ถึง ${Math.max(...S)} mmHg<br>ตัวล่าง ${Math.min(...D)} ถึง ${Math.max(...D)} mmHg` : "ไม่มีข้อมูล"}</td></tr>
+      <tr><th>อาการผิดสังเกต</th><td>${rep.symptoms.length} รายการ</td></tr></table>
+      <div class="note">จัดทำเมื่อ ${esc(rep.made)} จากสิ่งที่ผู้ดูแลบันทึก ระบบไม่ตีความค่าและไม่วินิจฉัย รายการที่ไม่มีบันทึกไม่ได้แปลว่าไม่ได้ทำ</div></div>
+      <div class="card"><h2>ความดันรายวัน</h2>${chart(days)}</div>
+      <div class="card"><h2>อาการผิดสังเกต</h2>${tbl(["วันที่", "เวลา", "ผู้ดูแลบันทึกว่า"], rep.symptoms.map(s => [dm(s.date), s.time, s.text]))}</div>
+      <div class="card"><h2>รอบยาที่บันทึกว่าไม่ได้ให้</h2>${tbl(["วันที่", "เวลา", "รายการ", "เหตุผล"], rep.skipped.map(s => [dm(s.date), s.time, s.label, s.reason]))}</div>
+      <div class="card"><h2>ค่าความดันทั้งหมด</h2>${tbl(["วันที่", "เวลา", "ตัวบน/ตัวล่าง", "ชีพจร"], rep.bp.map(b => [dm(b.date), b.time, b.s + "/" + b.d, b.p]))}</div>
+      <button class="primary noprint" id="pr">พิมพ์ หรือบันทึกเป็น PDF</button>
+      <div class="note noprint">ถ้าเปิดอยู่ใน LINE ปุ่มนี้จะเปิดหน้ารายงานในเบราว์เซอร์ของเครื่อง แล้วกดปุ่มอีกครั้งเพื่อพิมพ์</div>`;
+    document.getElementById("pr").addEventListener("click", () => { if (liff.isInClient()) liff.openWindow({ url: "https://liff.line.me/" + LIFF_ID + "#rep", external: true }); else window.print(); });
   } else if (tab === "work") {
     const w = data.work, dm = s => Number(s.slice(8)) + "/" + Number(s.slice(5, 7)) + "/" + (Number(s.slice(0, 4)) + 543);
     m.innerHTML = `<div class="card"><h2>สมุดประวัติการทำงาน</h2><table>
@@ -106,16 +134,19 @@ function render() {
     });
   }
 }
+async function loadRep() { try { rep = await call({ action: "report", days: repDays }); } catch (err) { rep = null; $("main").innerHTML = `<div class="card">${esc(err.message)}</div>`; return; } if (tab === "rep") render(); }
+$("main").addEventListener("click", e => { const b = e.target.closest("[data-days]"); if (b) { repDays = Number(b.dataset.days); render(); } });
 $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { tab = b.dataset.tab; render(); } });
 (async () => {
   try {
     await liff.init({ liffId: LIFF_ID });
-    if (!liff.isLoggedIn()) { liff.login(); return; }
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
     token = liff.getIDToken();
     data = await call({});
     $("who").textContent = `${data.patient} · ไม่ใช่ช่องทางฉุกเฉิน เหตุฉุกเฉินโทร 1669`;
     $("tabs").hidden = false; $("t-form").hidden = $("t-work").hidden = data.role !== "caregiver";
     if (location.hash === "#bp" && data.role === "caregiver") tab = "form";
+    if (location.hash === "#rep") tab = "rep";
     render();
   } catch (err) { $("who").textContent = ""; $("main").innerHTML = `<div class="card">${esc(err.message || "เปิดหน้านี้ไม่สำเร็จ")}</div>`; }
 })();
